@@ -134,6 +134,7 @@
 
   "config.emi.ui.effect_location": "効果の場所",
   "config.emi.ui.center_search_bar": "中央検索バー",
+  "config.emi.ui.top_search_bar": "上部検索バー",
   "config.emi.ui.show_hover_overlay": "ボタン判定の表示",
   "config.emi.ui.append_mod_id": "Mod IDを表示",
   "config.emi.ui.append_item_mod_id": "アイテムIDを表示",
@@ -866,3 +867,4 @@
   "tag.item.fabric.swords": "剣",
   "tag.item.fabric.shears": "ハサミ"
 }
+
