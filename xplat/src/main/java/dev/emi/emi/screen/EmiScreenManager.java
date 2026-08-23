@@ -7,10 +7,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import net.minecraft.component.ComponentChanges;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4fStack;
-import org.lwjgl.glfw.GLFW;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
@@ -45,7 +43,6 @@ import dev.emi.emi.config.SidebarSubpanels;
 import dev.emi.emi.config.SidebarTheme;
 import dev.emi.emi.config.SidebarType;
 import dev.emi.emi.input.EmiBind;
-import dev.emi.emi.input.EmiInput;
 import dev.emi.emi.mixin.accessor.HandledScreenAccessor;
 import dev.emi.emi.network.CreateItemC2SPacket;
 import dev.emi.emi.network.EmiNetwork;
@@ -79,15 +76,12 @@ import net.minecraft.client.gui.screen.ingame.CreativeInventoryScreen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.tooltip.TooltipComponent;
 import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.client.sound.PositionedSoundInstance;
-import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.command.argument.ItemStackArgument;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.Slot;
-import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
-import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 
 public class EmiScreenManager {
@@ -667,7 +661,7 @@ public class EmiScreenManager {
 		renderSlotOverlays(context, mouseX, mouseY, delta, base);
 		EmiProfiler.pop();
 
-		RenderSystem.disableDepthTest();
+		context.disableDepthTest();
 	}
 
 	public static void drawForeground(EmiDrawContext context, int mouseX, int mouseY, float delta) {
@@ -749,7 +743,7 @@ public class EmiScreenManager {
 				cursor = handled.getScreenHandler().getCursorStack();
 			}
 			ScreenSpace space = getHoveredSpace(mouseX, mouseY);
-			if (EmiConfig.cheatMode && !cursor.isEmpty() && space != null && space.getType() == SidebarType.INDEX && EmiConfig.deleteCursorStack.isBound()) {
+			if (EmiApi.isCheatMode() && !cursor.isEmpty() && space != null && space.getType() == SidebarType.INDEX && EmiConfig.deleteCursorStack.isBound()) {
 				List<TooltipComponent> list = List.of(
 					TooltipComponent.of(EmiPort.ordered(EmiPort.translatable("emi.delete_stack"))),
 					TooltipComponent.of(EmiPort.ordered(EmiConfig.deleteCursorStack.getBindText()))
@@ -882,7 +876,7 @@ public class EmiScreenManager {
 		}
 		if (base.screen() instanceof HandledScreen<?> hs && hs instanceof HandledScreenAccessor hsa) {
 			context.push();
-			context.matrices().translate(hsa.getX(), hsa.getY(), 0);
+			context.translate(hsa.getX(), hsa.getY());
 			for (Slot slot : hs.getScreenHandler().slots) {
 				if (!slot.isEnabled()) {
 					continue;
@@ -1036,7 +1030,7 @@ public class EmiScreenManager {
 			int mx = (int) mouseX;
 			int my = (int) mouseY;
 			recalculate();
-			if (EmiConfig.cheatMode && EmiConfig.deleteCursorStack.matchesMouse(button)) {
+			if (EmiApi.isCheatMode() && EmiConfig.deleteCursorStack.matchesMouse(button)) {
 				if (deleteCursor(mx, my)) {
 					// Returning false here makes the handled screen do something and removes a bug, oh well.
 					return false;
@@ -1129,12 +1123,12 @@ public class EmiScreenManager {
 		if (hasFocusedTextField(client.currentScreen, 10)) {
 			return false;
 		}
-		if (EmiConfig.cheatMode && EmiConfig.deleteCursorStack.matchesKey(keyCode, scanCode)) {
+		if (EmiApi.isCheatMode() && EmiConfig.deleteCursorStack.matchesKey(keyCode, scanCode)) {
 			if (deleteCursor(lastMouseX, lastMouseY)) {
 				return true;
 			}
 		}
-		if (EmiInput.isControlDown() && keyCode == GLFW.GLFW_KEY_Y) {
+		if (EmiConfig.displayAllRecipes.matchesKey(keyCode, scanCode)) {
 			EmiApi.displayAllRecipes();
 			return true;
 		} else {
@@ -1219,7 +1213,7 @@ public class EmiScreenManager {
 			if (craftInteraction(ingredient, () -> context, stack, function)) {
 				return true;
 			}
-			if (EmiConfig.cheatMode) {
+			if (EmiApi.isCheatMode()) {
 				if (ingredient.getEmiStacks().size() == 1 && stack instanceof SidebarEmiStackInteraction) {
 					if (function.apply(EmiConfig.cheatOneToInventory)) {
 						return give(ingredient.getEmiStacks().get(0), 1, 0);
@@ -1313,8 +1307,7 @@ public class EmiScreenManager {
 					amount = Math.min(amount, batches);
 				}
 				if (EmiRecipeFiller.performFill(context, EmiApi.getHandledScreen(), EmiCraftContext.Type.CRAFTABLE, destination, amount)) {
-					MinecraftClient.getInstance().getSoundManager()
-							.play(PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+					EmiPort.playClickSound();
 					return true;
 				}
 			}
@@ -1331,7 +1324,7 @@ public class EmiScreenManager {
 			repopulatePanels(SidebarType.FAVORITES);
 			return true;
 		} else if (function.apply(EmiConfig.copyId)) {
-			MinecraftClient.getInstance().getSoundManager().play(PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+			EmiPort.playClickSound();
 			client.keyboard.setClipboard("" + recipe.getId());
 			return true;
 		}
@@ -1364,11 +1357,8 @@ public class EmiScreenManager {
 			return true;
 		} else {
 			if (!is.isEmpty()) {
-				Identifier id = EmiPort.getItemRegistry().getId(is.getItem());
-				String command = "give @s " + id;
-				if (is.getComponentChanges() != ComponentChanges.EMPTY) {
-					command += is.getComponentChanges().toString();
-				}
+				ItemStackArgument argument = new ItemStackArgument(is.getRegistryEntry(), is.getComponentChanges());
+				String command = "give @s " + argument.asString(client.world.getRegistryManager());
 				command += " " + amount;
 				if (command.length() < 256) {
 					client.player.networkHandler.sendChatCommand(command);
@@ -1539,7 +1529,7 @@ public class EmiScreenManager {
 					}
 				}
 				if (isVisible()) {
-					RenderSystem.enableDepthTest();
+					context.enableDepthTest();
 					context.resetColor();
 					int headerOffset = header ? 18 : 0;
 					if (theme == SidebarTheme.VANILLA) {
@@ -1552,13 +1542,13 @@ public class EmiScreenManager {
 					} else if (theme == SidebarTheme.MODERN) {
 						int offset = 2;
 						for (ScreenSpace space : getSpaces()) {
-							RenderSystem.enableBlend();
+							context.enableBlend();
 							context.drawTexture(EmiRenderHelper.GRID, space.tx, space.ty, space.tw * ENTRY_SIZE,
 								space.th * ENTRY_SIZE, 0, 0, space.tw, space.th, 2, offset);
 							if (space.th % 2 == 1) {
 								offset *= -1;
 							}
-							RenderSystem.disableBlend();
+							context.disableBlend();
 						}
 					}
 					for (ScreenSpace space : getSpaces()) {
@@ -1761,7 +1751,7 @@ public class EmiScreenManager {
 
 		public void render(EmiDrawContext context, int mouseX, int mouseY, float delta, int startIndex) {
 			if (this.pageSize > 0) {
-				RenderSystem.enableDepthTest();
+				context.enableDepthTest();
 				EmiPort.setPositionTexShader();
 				context.setColor(1.0F, 1.0F, 1.0F, 1.0F);
 				int hx = -1, hy = -1;
@@ -1786,10 +1776,10 @@ public class EmiScreenManager {
 						batcher.render(stack, context.raw(), cx + 1, cy + 1, delta);
 						if (getType() == SidebarType.INDEX) {
 							if (EmiConfig.editMode && EmiHidden.isHidden(stack)) {
-								RenderSystem.enableDepthTest();
+								context.enableDepthTest();
 								context.fill(cx, cy, ENTRY_SIZE, ENTRY_SIZE, 0x33ff0000);
 							} else if (EmiConfig.highlightDefaulted && BoM.getRecipe(stack) != null) {
-								RenderSystem.enableDepthTest();
+								context.enableDepthTest();
 								context.fill(cx, cy, ENTRY_SIZE, ENTRY_SIZE, 0x3300ff00);
 							}
 						}

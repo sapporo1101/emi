@@ -16,11 +16,16 @@ import dev.emi.emi.jemi.impl.JemiRecipeLayoutBuilder;
 import dev.emi.emi.jemi.impl.JemiRecipeSlot;
 import dev.emi.emi.jemi.impl.JemiRecipeSlotBuilder;
 import dev.emi.emi.jemi.impl.JemiTooltipBuilder;
+import dev.emi.emi.jemi.impl.extras.JemiRecipeExtrasBuilder;
+import dev.emi.emi.jemi.impl.extras.JemiWidgetBuilder;
 import dev.emi.emi.jemi.widget.JemiSlotWidget;
 import dev.emi.emi.jemi.widget.JemiTankWidget;
 import dev.emi.emi.runtime.EmiDrawContext;
+import dev.emi.emi.runtime.EmiLog;
+import dev.emi.emi.runtime.ProxyRecipeManager;
 import dev.emi.emi.screen.EmiScreenManager;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
+import mezz.jei.api.gui.builder.IRecipeSlotBuilder;
 import mezz.jei.api.gui.drawable.IDrawable;
 import mezz.jei.api.gui.inputs.IJeiUserInput;
 import mezz.jei.api.recipe.RecipeIngredientRole;
@@ -81,7 +86,7 @@ public class JemiRecipe<T> implements EmiRecipe {
 
 	@Override
 	public @Nullable RecipeEntry<?> getBackingRecipe() {
-		return EmiPort.getRecipe(originalId);
+		return ProxyRecipeManager.getRecipeEntry(originalId);
 	}
 
 	@Override
@@ -139,6 +144,15 @@ public class JemiRecipe<T> implements EmiRecipe {
 				}
 			}
 		}
+		try {
+			JemiRecipeExtrasBuilder extras = new JemiRecipeExtrasBuilder(null);
+			category.createRecipeExtras(extras, recipe, JemiPlugin.runtime.getJeiHelpers().getFocusFactory().getEmptyFocusGroup());
+			for (JemiWidgetBuilder b : extras.widgets) {
+				b.addWidgets(widgets);
+			}
+		} catch(Throwable t) {
+			EmiLog.error("Exception adding JEMI extras", t);
+		}
 	}
 
 	public class JemiWidget extends Widget {
@@ -163,7 +177,7 @@ public class JemiRecipe<T> implements EmiRecipe {
 		public void render(DrawContext draw, int mouseX, int mouseY, float delta) {
 			EmiDrawContext context = EmiDrawContext.wrap(draw);
 			context.push();
-			context.matrices().translate(x, y, 0);
+			context.translate(x, y);
 			IDrawable background = category.getBackground();
 			if (background != null) {
 				background.draw(context.raw());
